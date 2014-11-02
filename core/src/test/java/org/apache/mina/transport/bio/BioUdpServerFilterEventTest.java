@@ -19,9 +19,7 @@
  */
 package org.apache.mina.transport.bio;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -146,12 +144,13 @@ public class BioUdpServerFilterEventTest {
     private class MyCodec extends AbstractIoFilter {
 
         @Override
-        public void messageReceived(final IoSession session, final Object message, final ReadFilterChainController controller) {
+        public void messageReceived(final IoSession session, final Object message,
+                final ReadFilterChainController controller) {
             if (message instanceof ByteBuffer) {
                 final ByteBuffer in = (ByteBuffer) message;
                 final byte[] buffer = new byte[in.remaining()];
                 in.get(buffer);
-                super.messageReceived(session, new String(buffer), controller);
+                controller.callReadNextFilter(new String(buffer));
             } else {
                 fail();
             }
@@ -160,7 +159,7 @@ public class BioUdpServerFilterEventTest {
         @Override
         public void messageWriting(IoSession session, WriteRequest writeRequest, WriteFilterChainController controller) {
             writeRequest.setMessage(ByteBuffer.wrap(writeRequest.getMessage().toString().getBytes()));
-            super.messageWriting(session, writeRequest, controller);
+            controller.callWriteNextFilter(writeRequest);
         }
     }
 
@@ -179,7 +178,8 @@ public class BioUdpServerFilterEventTest {
         }
 
         @Override
-        public void messageReceived(final IoSession session, final Object message, final ReadFilterChainController controller) {
+        public void messageReceived(final IoSession session, final Object message,
+                final ReadFilterChainController controller) {
             LOG.info("** message received {}", message);
             msgReadLatch.countDown();
             session.write(message.toString());

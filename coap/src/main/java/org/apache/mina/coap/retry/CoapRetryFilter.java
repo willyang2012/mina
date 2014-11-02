@@ -40,16 +40,13 @@ import org.slf4j.LoggerFactory;
  * An {@link IoFilter} in charge of messages retransmissions.
  * 
  * <p>
- * In case of messages to be sent to the client, the filter retransmits the
- * <i>Confirmable</i> message at exponentially increasing intervals, until it
- * receives an acknowledgment (or <i>Reset</i> message), or runs out of
- * attempts.
+ * In case of messages to be sent to the client, the filter retransmits the <i>Confirmable</i> message at exponentially
+ * increasing intervals, until it receives an acknowledgment (or <i>Reset</i> message), or runs out of attempts.
  * </p>
  * 
  * <p>
- * In case of received <i>Confirmable</i> messages, the filter keeps track of
- * the acknowledged transmissions in order to avoid multiple processing of
- * duplicated messages.
+ * In case of received <i>Confirmable</i> messages, the filter keeps track of the acknowledged transmissions in order to
+ * avoid multiple processing of duplicated messages.
  * </p>
  */
 public class CoapRetryFilter extends AbstractIoFilter {
@@ -62,10 +59,7 @@ public class CoapRetryFilter extends AbstractIoFilter {
     /** The confirmable messages waiting to be acknowledged */
     private Map<String, CoapTransmission> inFlight = new ConcurrentHashMap<>();
 
-    /**
-     * The list of processed messages used to handle duplicate copies of
-     * Confirmable messages
-     */
+    /** The list of processed messages used to handle duplicate copies of Confirmable messages */
     private ExpiringMap<String, CoapMessage> processed = new ExpiringMap<String, CoapMessage>(retryExecutor);
 
     /**
@@ -81,34 +75,29 @@ public class CoapRetryFilter extends AbstractIoFilter {
         switch (coapMsg.getType()) {
         case NON_CONFIRMABLE:
             // non confirmable message, let's move to the next filter
-            super.messageReceived(session, coapMsg, controller);
+            controller.callReadNextFilter(coapMsg);
             break;
-
         case CONFIRMABLE:
             // check if this is a duplicate of a message already processed
             CoapMessage ack = processed.get(transmissionId);
-
             if (ack != null) {
-                // stop the filter chain and send again the ack since it was
-                // probably lost
+                // stop the filter chain and send again the ack since it was probably lost
                 LOGGER.debug("Duplicated messages detected with ID {} in session {}", coapMsg.requestId(), session);
                 controller.callWriteMessageForRead(ack);
             } else {
-                super.messageReceived(session, coapMsg, controller);
+                controller.callReadNextFilter(coapMsg);
             }
 
             break;
         case ACK:
         case RESET:
             CoapTransmission t = inFlight.get(transmissionId);
-
             if (t != null) {
                 // cancel the scheduled retransmission
                 t.getRetryFuture().cancel(false);
                 inFlight.remove(transmissionId);
             }
-
-            super.messageReceived(session, coapMsg, controller);
+            controller.callReadNextFilter(coapMsg);
             break;
         }
     }
@@ -117,7 +106,8 @@ public class CoapRetryFilter extends AbstractIoFilter {
      * {@inheritDoc}
      */
     @Override
-    public void messageWriting(final IoSession session, final WriteRequest message, WriteFilterChainController controller) {
+    public void messageWriting(final IoSession session, final WriteRequest message,
+            WriteFilterChainController controller) {
         LOGGER.debug("Processing a MESSAGE_WRITING for session {}", session);
 
         final CoapMessage coapMsg = (CoapMessage) message.getMessage();
@@ -130,8 +120,7 @@ public class CoapRetryFilter extends AbstractIoFilter {
             break;
         case RESET:
         case ACK:
-            // let's keep track of the message to avoid processing it again in
-            // case of duplicate copy.
+            // let's keep track of the message to avoid processing it again in case of duplicate copy.
             processed.put(transmissionId, coapMsg);
 
             controller.callWriteNextFilter(message);
@@ -152,8 +141,7 @@ public class CoapRetryFilter extends AbstractIoFilter {
                 public void run() {
                     CoapTransmission t = inFlight.get(transmissionId);
 
-                    // send again the message if the maximum number of attempts
-                    // is not reached
+                    // send again the message if the maximum number of attempts is not reached
                     if (t != null && t.timeout()) {
                         LOGGER.debug("Retry for message with ID {}", coapMsg.requestId());
                         session.write(coapMsg);
